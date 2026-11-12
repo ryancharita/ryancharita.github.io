@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/components/hero.tsx","./src/components/intro.tsx","./src/components/sections.tsx","./src/components/work.tsx","./src/components/ui.tsx","./src/content/profile.ts","./src/lib/hooks.ts","./src/lib/store.ts","./src/three/scene.tsx","./src/three/shaders.ts","./vite.config.ts"],"version":"5.9.3"}
