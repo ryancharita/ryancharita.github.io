@@ -223,15 +223,15 @@ function CapabilityForms() {
   const mat = <meshBasicMaterial color={ACCENT} wireframe transparent opacity={0.45} />;
   return (
     <group position={capabilityCluster}>
-      <mesh ref={set(0)} position={[-3.2, 0, 0]}>
+      <mesh ref={set(0)} position={[-4.2, -0.4, 0]}>
         <icosahedronGeometry args={[1.1, 1]} />
         {mat}
       </mesh>
-      <mesh ref={set(1)} position={[0, 0.6, -1.5]}>
+      <mesh ref={set(1)} position={[0, 0.9, -2]}>
         <torusKnotGeometry args={[0.8, 0.22, 120, 12]} />
         {mat}
       </mesh>
-      <mesh ref={set(2)} position={[3.2, 0, 0]}>
+      <mesh ref={set(2)} position={[4.2, -0.4, 0]}>
         <octahedronGeometry args={[1.2, 0]} />
         {mat}
       </mesh>
@@ -246,7 +246,7 @@ function Milestones() {
     const inExp = idOf(store.chapter) === "experience";
     groups.current.forEach((g, j) => {
       if (!g) return;
-      const target = inExp && j === store.role ? 1.5 : inExp && j < store.role ? 1 : 0.7;
+      const target = inExp && j === store.role ? 1.25 : inExp && j < store.role ? 0.9 : 0.7;
       g.scale.setScalar(THREE.MathUtils.damp(g.scale.x, target, 4, dt));
       g.rotation.y += dt * 0.5 * (store.reducedMotion ? 0 : 1);
     });
@@ -327,13 +327,15 @@ function Rig() {
       }
       case "capabilities":
         target.copy(capabilityCluster);
-        sy = mobile ? 2.8 : 1.1;
+        sy = mobile ? 3.0 : 0.6;
         break;
       case "experience":
-        curve.getPoint(Math.min(1, u.current + 0.035), target);
-        target.y -= 0.4;
-        sx = mobile ? 0 : -2.3;
-        sy = mobile ? 2.2 : 0;
+        // Look well down the road so the view follows its bends, with the road
+        // nudged left of the role list.
+        curve.getPoint(Math.min(1, u.current + 0.07), target);
+        target.y -= 0.5;
+        sx = mobile ? 0 : -1.1;
+        sy = mobile ? 2.5 : 0;
         break;
       default:
         target.copy(destination);

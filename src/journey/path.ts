@@ -47,7 +47,7 @@ export const chapters: Chapter[] = [
     id: "experience",
     label: "Experience",
     vh: 260,
-    points: [[1.4, 0.2, -92], [-1.4, -0.2, -104], [0, 0, -116]],
+    points: [[0.3, 0.4, -92], [-0.3, 0.1, -104], [0, 0, -116]],
     focus: 0.3,
   },
   { id: "contact", label: "Contact", vh: 190, points: [[0, 0, -126]], focus: 1 },
@@ -105,15 +105,21 @@ export const projectPanels = Array.from({ length: PROJECTS }, (_, i) => {
   };
 });
 
-export const capabilityCluster = new THREE.Vector3(0, 1.2, -88);
+// Raised and spread wide so the camera passes underneath on its way to Experience.
+export const capabilityCluster = new THREE.Vector3(0, 2.6, -88);
 
-/** Experience milestones along the road. */
+/** Progress through the experience chapter at which role j is highlighted. */
+export const roleFocus = (j: number) => 0.08 + ((j + 0.5) / ROLES) * 0.8;
+
+/**
+ * Experience milestones on the left edge of the road. Each sits a little ahead of
+ * where the camera is when its role is highlighted, so it is in view at that moment.
+ */
 export const milestones = Array.from({ length: ROLES }, (_, j) => {
   const i = chapters.findIndex((c) => c.id === "experience");
-  const [a, b] = chapterU[i];
-  const u = Math.min(1, a + ((j + 0.8) / (ROLES + 0.5)) * (b - a));
+  const u = Math.min(1, uFor(i, roleFocus(j)) + 0.045);
   const p = curve.getPoint(u);
-  return new THREE.Vector3(p.x - 1.8, p.y - 0.5, p.z - 4);
+  return new THREE.Vector3(p.x - 2.4, p.y - 0.3, p.z);
 });
 
 export const destination = new THREE.Vector3(0, 0, -136);
