@@ -111,14 +111,12 @@ body {
 }
 .is-loaded .fade-in { opacity: 1; filter: none; transform: none; }
 
-/* Scroll reveal, toggled by useReveal(). */
-[data-reveal] {
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.9s var(--ease-out-soft), transform 0.9s var(--ease-out-soft);
-  transition-delay: calc(var(--i, 0) * 70ms);
+/* Project caption swap in the work chapter. */
+@keyframes caption-in {
+  from { opacity: 0; transform: translateY(16px); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
 }
-[data-reveal].is-in { opacity: 1; transform: none; }
+.caption-in { animation: caption-in 0.7s var(--ease-out-soft) both; }
 
 /* Stack marquee */
 @keyframes marquee { to { transform: translateX(-50%); } }
@@ -138,6 +136,6 @@ body {
 .scroll-cue { animation: scroll-cue 2s var(--ease-out-soft) infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .line-mask > span, .fade-in, [data-reveal] { transition: none; transform: none; opacity: 1; filter: none; }
-  .marquee, .animate-ping-slow, .scroll-cue { animation: none; }
+  .line-mask > span, .fade-in, .caption-in { transition: none; transform: none; opacity: 1; filter: none; }
+  .marquee, .animate-ping-slow, .scroll-cue, .caption-in { animation: none; }
 }

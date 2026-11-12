@@ -126,6 +126,8 @@ void main(){
   gl_Position = projectionMatrix * mv;
   gl_PointSize = uSize * aScale * uPixelRatio * (1.0 / -mv.z);
   vAlpha = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * 0.8 + aSeed * 40.0));
+  // Fade with distance so the tunnel dissolves into the dark, and very close points don't flash.
+  vAlpha *= smoothstep(60.0, 12.0, -mv.z) * smoothstep(0.4, 2.0, -mv.z);
 }
 `;
 

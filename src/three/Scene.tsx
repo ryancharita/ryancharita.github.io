@@ -1,142 +1,112 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Suspense, useMemo, useRef } from "react";
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { store } from "../lib/store";
+import { work } from "../content/profile";
+import {
+  capabilityCluster,
+  chapters,
+  corePosition,
+  curve,
+  destination,
+  milestones,
+  projectPanels,
+  projectSide,
+} from "../journey/path";
 import { coreFragment, coreVertex, particleFragment, particleVertex } from "./shaders";
 
 const ACCENT = new THREE.Color("#5cf2c8");
 const BASE = new THREE.Color("#0b1513");
+const BG = "#050607";
+const idOf = (i: number) => chapters[i]?.id;
 
-// Where the core sits as the page scrolls. Each key is anchored to a point inside a
-// section (`at` = 0 its top, 1 its bottom) reaching the middle of the viewport, so the
-// path follows the real layout. x/y are fractions of the viewport's width/height.
-type Key = { id: string; at: number; x: number; y: number; s: number; amp: number };
-const DESKTOP: Key[] = [
-  { id: "home", at: 0.0, x: 0.3, y: 0.0, s: 0.95, amp: 0.17 }, // right of the headline
-  { id: "about", at: 0.5, x: -0.27, y: 0.02, s: 0.8, amp: 0.3 }, // left of the statement
-  { id: "work", at: 0.12, x: 0.43, y: 0.22, s: 0.36, amp: 0.2 }, // tucked at the edge of the list
-  { id: "work", at: 0.88, x: 0.43, y: -0.2, s: 0.36, amp: 0.2 },
-  { id: "experience", at: 0.25, x: -0.3, y: 0.05, s: 0.62, amp: 0.26 }, // the empty left column
-  { id: "experience", at: 0.8, x: -0.3, y: -0.05, s: 0.62, amp: 0.26 },
-  { id: "contact", at: 0.3, x: 0.0, y: 0.04, s: 1.2, amp: 0.34 }, // behind the closing headline
-];
-const MOBILE: Key[] = [
-  { id: "home", at: 0.0, x: 0.3, y: 0.3, s: 0.75, amp: 0.2 }, // top-right, above the headline
-  { id: "about", at: 0.5, x: 0.3, y: 0.32, s: 0.55, amp: 0.28 },
-  { id: "work", at: 0.5, x: 0.34, y: 0.34, s: 0.45, amp: 0.2 },
-  { id: "contact", at: 0.3, x: 0.0, y: 0.36, s: 0.8, amp: 0.32 },
-];
-
-/** Scroll offsets (px) at which each key applies. Re-measured on resize. */
-function measure(keys: Key[]) {
-  const vh = window.innerHeight;
-  return keys.map((k) => {
-    const el = document.getElementById(k.id);
-    if (!el) return 0;
-    const top = el.getBoundingClientRect().top + window.scrollY;
-    return Math.max(0, top + el.offsetHeight * k.at - vh * 0.5);
-  });
-}
-
-function sample(keys: Key[], stops: number[], y: number) {
-  let i = 0;
-  while (i < keys.length - 2 && y > stops[i + 1]) i++;
-  const a = keys[i];
-  const b = keys[i + 1];
-  const span = stops[i + 1] - stops[i];
-  const t = span > 0 ? THREE.MathUtils.clamp((y - stops[i]) / span, 0, 1) : 1;
-  const e = t * t * (3 - 2 * t); // smoothstep
-  return {
-    x: THREE.MathUtils.lerp(a.x, b.x, e),
-    y: THREE.MathUtils.lerp(a.y, b.y, e),
-    s: THREE.MathUtils.lerp(a.s, b.s, e),
-    amp: THREE.MathUtils.lerp(a.amp, b.amp, e),
-  };
-}
-
-function Core() {
+function Core({ position, scale = 1, detail = 128 }: { position: THREE.Vector3; scale?: number; detail?: number }) {
   const group = useRef<THREE.Group>(null!);
   const shell = useRef<THREE.LineSegments>(null!);
-  const { viewport, size } = useThree();
-  const mobile = size.width < 768;
-
   const uniforms = useMemo(
     () => ({
-      uTime: { value: 0 },
-      uAmp: { value: 0.22 },
+      uTime: { value: Math.random() * 10 },
+      uAmp: { value: 0.18 },
       uFreq: { value: 1.1 },
       uAccent: { value: ACCENT },
       uBase: { value: BASE },
     }),
     [],
   );
-
-  const keys = mobile ? MOBILE : DESKTOP;
-  const stops = useRef<number[]>([]);
-  useEffect(() => {
-    const update = () => (stops.current = measure(keys));
-    update();
-    // Fonts and images shift the layout after first paint, so re-measure on any body resize.
-    const ro = new ResizeObserver(update);
-    ro.observe(document.body);
-    return () => ro.disconnect();
-  }, [keys]);
-
   const shellGeo = useMemo(() => new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.55, 1)), []);
 
   useFrame((_, dt) => {
     const motion = store.reducedMotion ? 0 : 1;
-    const k = sample(keys, stops.current, store.scroll);
-    const vel = THREE.MathUtils.clamp(Math.abs(store.velocity) / 40, 0, 1);
-
     uniforms.uTime.value += dt * motion;
-    const targetAmp = k.amp + vel * 0.18 * motion + store.excite * 0.2 * motion;
-    uniforms.uAmp.value = THREE.MathUtils.damp(uniforms.uAmp.value, targetAmp, 4, dt);
-
-    const g = group.current;
-    const tx = k.x * viewport.width + store.pointer.x * 0.15 * motion;
-    const ty = k.y * viewport.height + store.pointer.y * 0.1 * motion;
-    g.position.x = THREE.MathUtils.damp(g.position.x, tx, 3, dt);
-    g.position.y = THREE.MathUtils.damp(g.position.y, ty, 3, dt);
-    const s = THREE.MathUtils.damp(g.scale.x, k.s * (mobile ? viewport.width / 3.4 : Math.min(1.2, viewport.width / 9)), 3, dt);
-    g.scale.setScalar(s);
-
-    g.rotation.y += dt * 0.12 * motion + store.velocity * 0.0006 * motion;
-    g.rotation.x = THREE.MathUtils.damp(g.rotation.x, store.pointer.y * 0.3 * motion, 2, dt);
-
+    const vel = THREE.MathUtils.clamp(Math.abs(store.velocity) / 40, 0, 1);
+    uniforms.uAmp.value = THREE.MathUtils.damp(uniforms.uAmp.value, 0.18 + vel * 0.2 * motion, 4, dt);
+    group.current.rotation.y += dt * 0.12 * motion;
     shell.current.rotation.y -= dt * 0.08 * motion;
     shell.current.rotation.z += dt * 0.04 * motion;
   });
 
   return (
-    <group ref={group}>
+    <group ref={group} position={position} scale={scale}>
       <mesh>
-        <icosahedronGeometry args={[1, mobile ? 64 : 128]} />
+        <icosahedronGeometry args={[1, detail]} />
         <shaderMaterial vertexShader={coreVertex} fragmentShader={coreFragment} uniforms={uniforms} />
       </mesh>
       <lineSegments ref={shell} geometry={shellGeo}>
-        <lineBasicMaterial color={ACCENT} transparent opacity={0.14} depthWrite={false} />
+        <lineBasicMaterial color={ACCENT} transparent opacity={0.16} depthWrite={false} />
       </lineSegments>
     </group>
   );
 }
 
-function Particles({ count }: { count: number }) {
-  const points = useRef<THREE.Points>(null!);
-  const { gl } = useThree();
+/** The road: a faint line along the whole camera path with cross ticks, below eye level. */
+function Road() {
+  const [line, ticks] = useMemo(() => {
+    const drop = new THREE.Vector3(0, -0.9, 0);
+    const pts = curve.getSpacedPoints(800).map((p) => p.add(drop));
+    const t: THREE.Vector3[] = [];
+    for (let i = 0; i <= 160; i++) {
+      const u = i / 160;
+      const p = curve.getPointAt(u).add(drop);
+      const side = new THREE.Vector3()
+        .crossVectors(curve.getTangentAt(u), new THREE.Vector3(0, 1, 0))
+        .normalize()
+        .multiplyScalar(0.18);
+      t.push(p.clone().add(side), p.clone().sub(side));
+    }
+    const lineObj = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: ACCENT, transparent: true, opacity: 0.35 }),
+    );
+    return [lineObj, new THREE.BufferGeometry().setFromPoints(t)];
+  }, []);
+  return (
+    <group>
+      <primitive object={line} />
+      <lineSegments geometry={ticks}>
+        <lineBasicMaterial color={ACCENT} transparent opacity={0.25} />
+      </lineSegments>
+    </group>
+  );
+}
 
+/** Particles scattered in a loose tunnel around the path. */
+function Particles({ count }: { count: number }) {
+  const { gl } = useThree();
   const [positions, scales, seeds] = useMemo(() => {
     const pos = new Float32Array(count * 3);
     const sc = new Float32Array(count);
     const sd = new Float32Array(count);
+    const v = new THREE.Vector3();
     for (let i = 0; i < count; i++) {
-      // A wide, flattened shell so the field reads as depth behind the content.
-      const r = 3 + Math.random() * 9;
-      const th = Math.random() * Math.PI * 2;
-      const ph = Math.acos(2 * Math.random() - 1);
-      pos[i * 3] = r * Math.sin(ph) * Math.cos(th) * 1.6;
-      pos[i * 3 + 1] = r * Math.cos(ph) * 1.2;
-      pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th) - 4;
+      const u = Math.random() * 1.08 - 0.04;
+      curve.getPointAt(THREE.MathUtils.clamp(u, 0, 1), v);
+      if (u < 0) v.z += -u * 140;
+      if (u > 1) v.z -= (u - 1) * 140;
+      const r = 2.5 + Math.random() * 12;
+      const a = Math.random() * Math.PI * 2;
+      pos[i * 3] = v.x + Math.cos(a) * r * 1.4;
+      pos[i * 3 + 1] = v.y + Math.sin(a) * r * 0.8;
+      pos[i * 3 + 2] = v.z + (Math.random() - 0.5) * 4;
       sc[i] = 0.4 + Math.random() * 1.2;
       sd[i] = Math.random();
     }
@@ -146,24 +116,18 @@ function Particles({ count }: { count: number }) {
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uSize: { value: 42 },
+      uSize: { value: 46 },
       uPixelRatio: { value: Math.min(gl.getPixelRatio(), 2) },
       uColor: { value: new THREE.Color("#9fe9d4") },
     }),
     [gl],
   );
-
   useFrame((_, dt) => {
-    const motion = store.reducedMotion ? 0 : 1;
-    uniforms.uTime.value += dt * motion;
-    const p = points.current;
-    p.rotation.y += dt * 0.015 * motion;
-    // Parallax: the field drifts up as the page scrolls, slower than the content.
-    p.position.y = THREE.MathUtils.damp(p.position.y, store.progress * 6 * motion, 2, dt);
+    uniforms.uTime.value += dt * (store.reducedMotion ? 0 : 1);
   });
 
   return (
-    <points ref={points}>
+    <points>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         <bufferAttribute attach="attributes-aScale" args={[scales, 1]} />
@@ -181,13 +145,210 @@ function Particles({ count }: { count: number }) {
   );
 }
 
-function Rig() {
+/** Project screenshots hanging along the road. The one in view is brighter and larger. */
+function ProjectPanels() {
+  const textures = useLoader(THREE.TextureLoader, work.projects.map((p) => p.image));
+  useMemo(
+    () =>
+      textures.forEach((t) => {
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+      }),
+    [textures],
+  );
+  const groups = useRef<THREE.Group[]>([]);
+  const mats = useRef<THREE.MeshBasicMaterial[]>([]);
+  const frame = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(3.36, 2.16)), []);
+
   useFrame((state, dt) => {
+    const inWork = idOf(store.chapter) === "work";
+    groups.current.forEach((g, i) => {
+      if (!g) return;
+      const active = inWork && store.project === i;
+      g.scale.setScalar(THREE.MathUtils.damp(g.scale.x, active ? 1 : 0.86, 4, dt));
+      const m = mats.current[i];
+      if (m) m.color.setScalar(THREE.MathUtils.damp(m.color.r, active ? 1 : 0.35, 4, dt));
+      if (!store.reducedMotion) {
+        g.position.y = projectPanels[i].position.y + Math.sin(state.clock.elapsedTime * 0.6 + i) * 0.06;
+      }
+    });
+  });
+
+  return (
+    <>
+      {projectPanels.map((p, i) => (
+        <group
+          key={i}
+          ref={(g) => {
+            if (!g || groups.current[i] === g) return;
+            groups.current[i] = g;
+            g.position.copy(p.position);
+            g.lookAt(p.lookAt);
+            g.rotateY(-projectSide(i) * 0.12);
+          }}
+        >
+          <mesh>
+            <planeGeometry args={[3.2, 2]} />
+            <meshBasicMaterial
+              ref={(m: THREE.MeshBasicMaterial | null) => {
+                if (m) mats.current[i] = m;
+              }}
+              map={textures[i]}
+              toneMapped={false}
+            />
+          </mesh>
+          <lineSegments geometry={frame}>
+            <lineBasicMaterial color={ACCENT} transparent opacity={0.35} />
+          </lineSegments>
+        </group>
+      ))}
+    </>
+  );
+}
+
+/** Three rotating wireframe forms, one per capability group. */
+function CapabilityForms() {
+  const meshes = useRef<THREE.Mesh[]>([]);
+  useFrame((_, dt) => {
+    const m = store.reducedMotion ? 0 : 1;
+    meshes.current.forEach((r, i) => {
+      if (!r) return;
+      r.rotation.x += dt * (0.15 + i * 0.05) * m;
+      r.rotation.y += dt * (0.2 - i * 0.03) * m;
+    });
+  });
+  const set = (i: number) => (m: THREE.Mesh | null) => {
+    if (m) meshes.current[i] = m;
+  };
+  const mat = <meshBasicMaterial color={ACCENT} wireframe transparent opacity={0.45} />;
+  return (
+    <group position={capabilityCluster}>
+      <mesh ref={set(0)} position={[-3.2, 0, 0]}>
+        <icosahedronGeometry args={[1.1, 1]} />
+        {mat}
+      </mesh>
+      <mesh ref={set(1)} position={[0, 0.6, -1.5]}>
+        <torusKnotGeometry args={[0.8, 0.22, 120, 12]} />
+        {mat}
+      </mesh>
+      <mesh ref={set(2)} position={[3.2, 0, 0]}>
+        <octahedronGeometry args={[1.2, 0]} />
+        {mat}
+      </mesh>
+    </group>
+  );
+}
+
+/** Glowing markers along the road, one per role. */
+function Milestones() {
+  const groups = useRef<THREE.Group[]>([]);
+  useFrame((_, dt) => {
+    const inExp = idOf(store.chapter) === "experience";
+    groups.current.forEach((g, j) => {
+      if (!g) return;
+      const target = inExp && j === store.role ? 1.5 : inExp && j < store.role ? 1 : 0.7;
+      g.scale.setScalar(THREE.MathUtils.damp(g.scale.x, target, 4, dt));
+      g.rotation.y += dt * 0.5 * (store.reducedMotion ? 0 : 1);
+    });
+  });
+  return (
+    <>
+      {milestones.map((p, j) => (
+        <group
+          key={j}
+          position={p}
+          ref={(g) => {
+            if (g) groups.current[j] = g;
+          }}
+        >
+          <mesh>
+            <sphereGeometry args={[0.09, 16, 16]} />
+            <meshBasicMaterial color={ACCENT} toneMapped={false} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.38, 0.008, 8, 64]} />
+            <meshBasicMaterial color={ACCENT} transparent opacity={0.6} />
+          </mesh>
+          <mesh>
+            <torusGeometry args={[0.55, 0.005, 8, 64]} />
+            <meshBasicMaterial color={ACCENT} transparent opacity={0.3} />
+          </mesh>
+          {/* A thin beam down to the road. */}
+          <mesh position={[0, -0.6, 0]}>
+            <boxGeometry args={[0.006, 1.2, 0.006]} />
+            <meshBasicMaterial color={ACCENT} transparent opacity={0.35} />
+          </mesh>
+        </group>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Moves the camera along the curve and aims it at whatever the current chapter is
+ * about, offset so the subject sits beside the chapter's text rather than under it.
+ */
+function Rig() {
+  const { camera, size } = useThree();
+  const u = useRef(0);
+  const look = useRef(new THREE.Vector3(-2, 0, 0));
+  const pos = useMemo(() => new THREE.Vector3(), []);
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const right = useMemo(() => new THREE.Vector3(), []);
+  const up = useMemo(() => new THREE.Vector3(), []);
+
+  useFrame((_, dt) => {
+    const mobile = size.width < 768;
     const motion = store.reducedMotion ? 0 : 1;
-    const cam = state.camera;
-    cam.position.x = THREE.MathUtils.damp(cam.position.x, store.pointer.x * 0.35 * motion, 2, dt);
-    cam.position.y = THREE.MathUtils.damp(cam.position.y, store.pointer.y * 0.2 * motion, 2, dt);
-    cam.lookAt(0, 0, 0);
+    u.current = store.reducedMotion ? store.u : THREE.MathUtils.damp(u.current, store.u, 5, dt);
+    curve.getPoint(THREE.MathUtils.clamp(u.current, 0, 1), pos);
+    camera.position.set(pos.x + store.pointer.x * 0.25 * motion, pos.y + store.pointer.y * 0.15 * motion, pos.z);
+
+    // Subject, and where it should sit on screen (sx > 0 puts it right of centre).
+    let sx = 0;
+    let sy = 0;
+    switch (idOf(store.chapter)) {
+      case "home":
+        target.copy(corePosition);
+        sx = mobile ? 0 : 2.1;
+        sy = mobile ? 2.5 : 0;
+        break;
+      case "about":
+        target.copy(corePosition);
+        sx = mobile ? 0.4 : -2.0;
+        sy = mobile ? 1.9 : 0;
+        break;
+      case "work": {
+        const i = store.project;
+        target.copy(projectPanels[i].position);
+        sx = mobile ? 0 : projectSide(i) * 1.9;
+        sy = mobile ? 1.15 : 0.1;
+        break;
+      }
+      case "capabilities":
+        target.copy(capabilityCluster);
+        sy = mobile ? 2.8 : 1.1;
+        break;
+      case "experience":
+        curve.getPoint(Math.min(1, u.current + 0.035), target);
+        target.y -= 0.4;
+        sx = mobile ? 0 : -2.3;
+        sy = mobile ? 2.2 : 0;
+        break;
+      default:
+        target.copy(destination);
+        sy = mobile ? 0.4 : 0.2;
+    }
+
+    // Offset the aim point in the camera's own frame, then ease towards it.
+    right.setFromMatrixColumn(camera.matrixWorld, 0);
+    up.setFromMatrixColumn(camera.matrixWorld, 1);
+    target.addScaledVector(right, -sx).addScaledVector(up, -sy);
+    const k = store.reducedMotion ? 8 : 2.6;
+    look.current.x = THREE.MathUtils.damp(look.current.x, target.x, k, dt);
+    look.current.y = THREE.MathUtils.damp(look.current.y, target.y, k, dt);
+    look.current.z = THREE.MathUtils.damp(look.current.z, target.z, k, dt);
+    camera.lookAt(look.current);
   });
   return null;
 }
@@ -199,13 +360,22 @@ export default function Scene() {
       className="!fixed inset-0 -z-10"
       style={{ position: "fixed", pointerEvents: "none" }}
       dpr={[1, 1.75]}
-      camera={{ position: [0, 0, 6], fov: 40 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      camera={{ position: [0, 0, 7], fov: mobile ? 55 : 42, near: 0.1, far: 200 }}
+      gl={{ antialias: true, powerPreference: "high-performance" }}
       aria-hidden
     >
+      <color attach="background" args={[BG]} />
+      <fog attach="fog" args={[BG, 10, 46]} />
       <Rig />
-      <Particles count={mobile ? 500 : 1400} />
-      <Core />
+      <Road />
+      <Particles count={mobile ? 1200 : 3000} />
+      <Core position={corePosition} detail={mobile ? 64 : 128} />
+      <Suspense fallback={null}>
+        <ProjectPanels />
+      </Suspense>
+      <CapabilityForms />
+      <Milestones />
+      <Core position={destination} scale={1.9} detail={mobile ? 64 : 128} />
     </Canvas>
   );
 }
