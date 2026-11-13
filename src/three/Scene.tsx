@@ -291,11 +291,16 @@ function Milestones() {
 function Rig() {
   const { camera, size } = useThree();
   const u = useRef(0);
-  const look = useRef(new THREE.Vector3(-2, 0, 0));
+  // Eased view direction, relative to the camera. Easing a world-space look point
+  // instead lets a fast-moving camera overtake it and spin round to face backwards.
+  const lookDir = useMemo(() => new THREE.Vector3(-2, 0, -7).normalize(), []);
   const pos = useMemo(() => new THREE.Vector3(), []);
   const target = useMemo(() => new THREE.Vector3(), []);
+  const dir = useMemo(() => new THREE.Vector3(), []);
   const right = useMemo(() => new THREE.Vector3(), []);
   const up = useMemo(() => new THREE.Vector3(), []);
+  const lookAt = useMemo(() => new THREE.Vector3(), []);
+  const WORLD_UP = useMemo(() => new THREE.Vector3(0, 1, 0), []);
 
   useFrame((_, dt) => {
     const mobile = size.width < 768;
@@ -342,15 +347,21 @@ function Rig() {
         sy = mobile ? 0.4 : 0.2;
     }
 
-    // Offset the aim point in the camera's own frame, then ease towards it.
-    right.setFromMatrixColumn(camera.matrixWorld, 0);
-    up.setFromMatrixColumn(camera.matrixWorld, 1);
+    // Offset the aim point sideways relative to the line of sight to the subject
+    // (not the camera's current, possibly mid-swing, orientation).
+    dir.subVectors(target, camera.position).normalize();
+    right.crossVectors(dir, WORLD_UP).normalize();
+    up.crossVectors(right, dir);
     target.addScaledVector(right, -sx).addScaledVector(up, -sy);
-    const k = store.reducedMotion ? 8 : 2.6;
-    look.current.x = THREE.MathUtils.damp(look.current.x, target.x, k, dt);
-    look.current.y = THREE.MathUtils.damp(look.current.y, target.y, k, dt);
-    look.current.z = THREE.MathUtils.damp(look.current.z, target.z, k, dt);
-    camera.lookAt(look.current);
+    dir.subVectors(target, camera.position);
+    if (dir.lengthSq() > 1e-6) {
+      dir.normalize();
+      const k = store.reducedMotion ? 8 : 2.6;
+      lookDir.lerp(dir, 1 - Math.exp(-k * dt));
+      if (lookDir.lengthSq() < 1e-6) lookDir.copy(dir);
+      lookDir.normalize();
+    }
+    camera.lookAt(lookAt.copy(camera.position).add(lookDir));
   });
   return null;
 }
